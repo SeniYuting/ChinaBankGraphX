@@ -3,42 +3,44 @@ package sjtu.edu.cn
 import org.apache.spark.graphx.{Edge, Graph, VertexId}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
+import scala.collection.JavaConversions._
 
 object GraphX {
+
   def main(args: Array[String]) {
     // 设置运行环境及master节点
     val conf = new SparkConf().setAppName("Simple GraphX").setMaster("local")
     val sc = new SparkContext(conf)
+    sc.setLogLevel("ERROR")
 
-    // 构造图
-    // 顶点
-    val vertexArray = Array(
-      (1L, ("Alice", 38)),
-      (2L, ("Henry", 27)),
-      (3L, ("Charlie", 55)),
-      (4L, ("Peter", 32)),
-      (5L, ("Mike", 35)),
-      (6L, ("Kate", 23))
-    )
+    val nodes = NeoData.nodes
+    val relationships = NeoData.relationships
 
-    // 边
-    val edgeArray = Array(
-      Edge(2L, 1L, 5),
-      Edge(2L, 4L, 2),
-      Edge(3L, 2L, 7),
-      Edge(3L, 6L, 3),
-      Edge(4L, 1L, 1),
-      Edge(5L, 2L, 3),
-      Edge(5L, 3L, 8),
-      Edge(5L, 6L, 8)
-    )
+    // Not Serializable, can not use Node & Relationship
+    var vertexArray: List[(Long, Map[String, Object])] = List()
+    var edgeArray: List[Edge[Map[String, Object]]] = List()
+
+    for (node <- nodes) {
+      vertexArray :+= (node.id(), node.asMap().toMap)
+    }
+
+    for (relationship <- relationships) {
+      edgeArray :+= Edge(relationship.startNodeId(), relationship.endNodeId(), relationship.asMap().toMap)
+    }
 
     //构造vertexRDD和edgeRDD
-    val vertexRDD: RDD[(Long, (String, Int))] = sc.parallelize(vertexArray)
-    val edgeRDD: RDD[Edge[Int]] = sc.parallelize(edgeArray)
+    val vertexRDD: RDD[(Long, Map[String, Object])] = sc.parallelize(vertexArray)
+    val edgeRDD: RDD[Edge[Map[String, Object]]] = sc.parallelize(edgeArray)
 
-    // 构造图
-    val graph: Graph[(String, Int), Int] = Graph(vertexRDD, edgeRDD)
+    vertexRDD.foreach(v => {
+      println(v._2("id") + ", " + classOf[String].cast(v._2("name")))
+    })
+
+    edgeRDD.foreach(v => {
+      println(classOf[String].cast(v.attr("date")) + ", " + v.attr("amount"))
+    })
+
+    val graph: Graph[Map[String, Object], Map[String, Object]] = Graph(vertexRDD, edgeRDD)
 
     // Degree操作
     println("Max OutDegrees, InDegrees and Degrees:")
