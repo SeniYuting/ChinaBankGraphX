@@ -8,6 +8,7 @@ import scala.collection.JavaConversions._
 object GraphX {
 
   def main(args: Array[String]) {
+
     // 设置运行环境及master节点
     val conf = new SparkConf().setAppName("Simple GraphX").setMaster("local")
     val sc = new SparkContext(conf)
@@ -33,34 +34,59 @@ object GraphX {
     val edgeRDD: RDD[Edge[Map[String, Object]]] = sc.parallelize(edgeArray)
 
     vertexRDD.foreach(v => {
-      println(v._2("id") + ", " + classOf[String].cast(v._2("name")))
+      println(v._1 + ", " + v._2("id") + ", " + classOf[String].cast(v._2("name")))
     })
 
     edgeRDD.foreach(v => {
-      println(classOf[String].cast(v.attr("date")) + ", " + v.attr("amount"))
+      println(v.srcId + ", " + v.dstId + ", " + classOf[String].cast(v.attr("date")) + ", " + v.attr("amount"))
     })
 
     val graph: Graph[Map[String, Object], Map[String, Object]] = Graph(vertexRDD, edgeRDD)
 
-    // Degree操作
-    println("Max OutDegrees, InDegrees and Degrees:")
-
+    // Compute the max degrees
     def max(a: (VertexId, Int), b: (VertexId, Int)): (VertexId, Int) = {
       if (a._2 > b._2) a else b
     }
 
-    // Compute the max degrees
     val maxInDegree: (VertexId, Int) = graph.inDegrees.reduce(max)
     val maxOutDegree: (VertexId, Int) = graph.outDegrees.reduce(max)
     val maxDegrees: (VertexId, Int) = graph.degrees.reduce(max)
 
-    println("Max of InDegrees:" + maxInDegree)
-    println("Max of OutDegrees:" + maxOutDegree)
-    println("Max of Degrees:" + maxDegrees)
+    println("Max of InDegrees: " + maxInDegree)
+    println("Max of OutDegrees: " + maxOutDegree)
+    println("Max of Degrees: " + maxDegrees)
 
-    // 排序，白名单：vertexId=3
-    println("Sort with white list vertexId = 3:")
-    val sortedVertex = graph.degrees.sortBy(each => each._2, false).filter(each => each._1.intValue() != 3)
-    sortedVertex.foreach(each => println("ID: " + each._1 + ", degrees: " + each._2))
+    // 排序，白名单：vertexId=XXX, 获取前n名的点
+    println("Sort with 'vertexId' in 'white list', get TOP N: ")
+    val whiteList = List(65385, 65364)
+    val n = 3
+    val topNVertex = graph.degrees.sortBy(each => each._2, false).filter(each => !whiteList.contains(each._1.intValue())) take n
+    topNVertex.foreach(each => println("ID: " + each._1 + ", degrees: " + each._2))
+
+    println()
+
+    // 只要有一个顶点在topNVertex中，即：从topNVertex顶点出发，长度为1的边集
+    println("Final Edge RDD: ")
+    val finalEdgeRDD = edgeRDD.filter(each => topNVertex.exists(_._1 == each.srcId) || topNVertex.exists(_._1 == each.dstId))
+    var finalVertexId: Set[Long] = Set()
+    finalEdgeRDD.collect().foreach(v => {
+      finalVertexId += v.srcId
+      finalVertexId += v.dstId
+      println(v.srcId + ", " + v.dstId + ", " + classOf[String].cast(v.attr("date")) + ", " + v.attr("amount"))
+    })
+
+    print("Final VertexId: ")
+    finalVertexId.foreach(each => print(each + " "))
+    println()
+
+    println("Final Vertex RDD: ")
+    val finalVertexRDD = vertexRDD.filter(each => finalVertexId.contains(each._1))
+    finalVertexRDD.foreach(v => {
+      println(v._1 + ", " + v._2("id") + ", " + classOf[String].cast(v._2("name")))
+    })
+
+    // for output
+    val finalGraph: Graph[Map[String, Object], Map[String, Object]] = Graph(finalVertexRDD, finalEdgeRDD)
+
   }
 }
